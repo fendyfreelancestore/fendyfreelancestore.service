@@ -25,6 +25,36 @@ function selectUpdate(id){document.getElementById('updateTicket').value=id;const
 document.getElementById('ticketType').addEventListener('change',setFormType);
 document.getElementById('updateTicket').addEventListener('change',()=>{const t=tickets.find(x=>x.id===document.getElementById('updateTicket').value);if(t)fillStatusOptions(t.ticket_type||'servis',t.status)});
 document.getElementById('ticketForm').addEventListener('submit',async e=>{e.preventDefault();if(!db||!session)return;const id=document.getElementById('ticketId').value,number=document.getElementById('ticketNo').value.trim(),code=document.getElementById('accessCode').value.trim(),type=document.getElementById('ticketType').value;const packageName=document.getElementById('packageName').value.trim(),componentList=document.getElementById('components').value.trim();if(!id&&!code){msg('ticketMsg','Kode akses pelanggan wajib diisi.');return}if(type==='rakitan'&&(!packageName||!componentList)){msg('ticketMsg','Nama paket dan daftar komponen wajib diisi untuk rakitan PC.');return}const record={ticket_type:type,service_number:number,customer_name:document.getElementById('customer').value.trim(),device:document.getElementById('device').value.trim(),technician:document.getElementById('technician').value.trim(),problem:document.getElementById('problem').value.trim(),package_name:type==='rakitan'?packageName:null,component_list:type==='rakitan'?componentList:null};if(code)record.access_code=code;if(!id)record.status=type==='rakitan'?'Order rakitan diterima':'Servis diterima';const {data,error}=id?await db.from('service_tickets').update(record).eq('id',id).select().single():await db.from('service_tickets').insert(record).select().single();if(error){msg('ticketMsg','Gagal menyimpan: '+error.message);return}if(!id){const initialStatus=type==='rakitan'?'Order rakitan diterima':'Servis diterima';const {error:he}=await db.from('service_history').insert({ticket_id:data.id,status:initialStatus,note:type==='rakitan'?'Order rakitan PC diterima.':'Unit diterima oleh admin.'});if(he)msg('ticketMsg','Order dibuat, tetapi riwayat awal gagal: '+he.message);else msg('ticketMsg','Order dibuat. Berikan nomor order dan kode akses kepada pelanggan.',true)}else msg('ticketMsg','Data order diperbarui.',true);resetForm();await loadTickets()});
-document.getElementById('updateForm').addEventListener('submit',async e=>{e.preventDefault();if(!db||!session)return;const id=document.getElementById('updateTicket').value,t=tickets.find(x=>x.id===id);if(!t)return;let photoUrl=null;const file=document.getElementById('photo').files[0];if(file){if(file.size>2*1024*1024){msg('updateMsg','Foto maksimal 2 MB.');return}if(!['image/jpeg','image/png','image/webp'].includes(file.type)){msg('updateMsg','Gunakan JPG, PNG, atau WEBP.');return}const path=`${id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;const {error:upErr}=await db.storage.from('service-photos').upload(path,file,{upsert:false,contentType:file.type});if(upErr){msg('updateMsg','Upload foto gagal: '+upErr.message);return}photoUrl=db.storage.from('service-photos').getPublicUrl(path).data.publicUrl}const status=document.getElementById('status').value,eta=document.getElementById('eta').value.trim(),cost=document.getElementById('cost').value;const {error}=await db.from('service_tickets').update({status,estimated_completion:eta||null,estimated_cost:cost===''?null:Number(cost)}).eq('id',id);if(error){msg('updateMsg','Gagal update tiket: '+error.message);return}const {error:he}=await db.from('service_history').insert({ticket_id:id,status,note:document.getElementById('note').value.trim(),photo_url});if(he){msg('updateMsg','Status berubah tetapi riwayat gagal disimpan: '+he.message);return}msg('updateMsg','Update tersimpan online.',true);document.getElementById('note').value='';document.getElementById('photo').value='';await loadTickets()});
+document.getElementById('updateForm').addEventListener('submit',async e=>{
+ e.preventDefault();
+ if(!db){msg('updateMsg','Supabase belum terhubung.');return}
+ if(!session){msg('updateMsg','Sesi admin habis. Silakan keluar lalu login kembali.');return}
+ const id=document.getElementById('updateTicket').value,t=tickets.find(x=>x.id===id);
+ if(!t){msg('updateMsg','Pilih tiket terlebih dahulu.');return}
+ const btn=document.querySelector('#updateForm button[type=submit]');btn.disabled=true;
+ try{
+  let photoUrl=null;const file=document.getElementById('photo').files[0];
+  if(file){
+   if(file.size>2*1024*1024)throw new Error('Foto maksimal 2 MB.');
+   if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw new Error('Gunakan foto JPG, PNG, atau WEBP.');
+   const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+   const path=`${id}/${Date.now()}-${safeName}`;
+   const {data:uploaded,error:upErr}=await db.storage.from('service-photos').upload(path,file,{upsert:false,contentType:file.type});
+   if(upErr)throw new Error('Upload foto gagal: '+upErr.message);
+   photoUrl=db.storage.from('service-photos').getPublicUrl(uploaded.path||path).data.publicUrl;
+   if(!photoUrl)throw new Error('Foto terunggah, tetapi URL foto gagal dibuat.');
+  }
+  const status=document.getElementById('status').value,eta=document.getElementById('eta').value.trim(),cost=document.getElementById('cost').value;
+  const {error:updateErr}=await db.from('service_tickets').update({status,estimated_completion:eta||null,estimated_cost:cost===''?null:Number(cost)}).eq('id',id);
+  if(updateErr)throw new Error('Gagal update tiket: '+updateErr.message);
+  const payload={ticket_id:id,status,note:document.getElementById('note').value.trim(),photo_url:photoUrl};
+  const {data:historyRow,error:historyErr}=await db.from('service_history').insert(payload).select('id,photo_url').single();
+  if(historyErr)throw new Error('Status berubah, tetapi riwayat gagal disimpan: '+historyErr.message);
+  if(photoUrl&&!historyRow.photo_url)throw new Error('Riwayat tersimpan tetapi photo_url kembali NULL. Periksa trigger/policy tabel service_history.');
+  msg('updateMsg',photoUrl?'Update dan URL foto berhasil disimpan.':'Update tersimpan tanpa foto.',true);
+  document.getElementById('note').value='';document.getElementById('photo').value='';await loadTickets();
+ }catch(err){console.error('ServiceTrack update error:',err);msg('updateMsg',err.message||'Terjadi kesalahan saat menyimpan update.');}
+ finally{btn.disabled=false}
+});
 if(db){db.auth.getSession().then(({data})=>{if(data.session){session=data.session;showDashboard()}})}
 </script></body></html>
