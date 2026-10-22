@@ -77,19 +77,31 @@ async function saveHistoryEdit(){
  const h=historyItems.find(x=>x.id===id);
  const status=document.getElementById('historyStatus').value.trim();
  const note=document.getElementById('historyNote').value.trim();
+ const file=document.getElementById('historyPhoto').files[0];
  if(!h){msg('historyMsg','Pilih riwayat yang ingin direvisi.');return}
  if(!status||!note){msg('historyMsg','Status dan catatan tidak boleh kosong.');return}
- if(!confirm('Simpan revisi status dan catatan riwayat ini?'))return;
+ if(file && file.size>2*1024*1024){msg('historyMsg','Foto maksimal 2 MB.');return}
+ if(file && !['image/jpeg','image/png','image/webp'].includes(file.type)){msg('historyMsg','Gunakan foto JPG, PNG, atau WEBP.');return}
+ if(!confirm(file?'Simpan revisi status, catatan, dan ganti foto riwayat ini?':'Simpan revisi status dan catatan? Foto lama akan dipertahankan.'))return;
  const btn=document.querySelector('button[onclick="saveHistoryEdit()"]');btn.disabled=true;
  try{
-  const {error}=await db.from('service_history').update({status,note}).eq('id',id);
+  const payload={status,note};
+  if(file){
+   const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+   const path=`${h.ticket_id}/${Date.now()}-${safeName}`;
+   const {data:uploaded,error:upErr}=await db.storage.from('service-photos').upload(path,file,{upsert:false,contentType:file.type});
+   if(upErr)throw new Error('Upload foto gagal: '+upErr.message);
+   const photoUrl=db.storage.from('service-photos').getPublicUrl(uploaded.path||path).data.publicUrl;
+   if(!photoUrl)throw new Error('Foto terunggah, tetapi URL foto gagal dibuat.');
+   payload.photo_url=photoUrl;
+  }
+  const {error}=await db.from('service_history').update(payload).eq('id',id);
   if(error)throw error;
   if(historyItems[0]?.id===id){
    const {error:ticketError}=await db.from('service_tickets').update({status}).eq('id',h.ticket_id);
    if(ticketError)throw new Error('Riwayat sudah direvisi, tetapi status tiket gagal disamakan: '+ticketError.message);
   }
   msg('historyMsg',file?'Revisi status, catatan, dan foto berhasil disimpan.':'Revisi status dan catatan berhasil disimpan; foto lama dipertahankan.',true);
-  await loadHistoryEditor();
   await loadTickets();
  }catch(err){console.error(err);msg('historyMsg','Gagal menyimpan revisi: '+(err.message||err))}
  finally{btn.disabled=false}
