@@ -7,10 +7,13 @@
 <section id="trackView"><div class="grid"><div class="card s5"><h2>Cek status order</h2><p class="muted">Bisa untuk servis PC/laptop maupun rakitan PC. Masukkan nomor order dan kode akses dari admin.</p><form id="lookupForm"><label>Nomor servis</label><input id="lookupNo" placeholder="SRV-2026-001 atau RAK-2026-001" required><label>Kode akses pelanggan</label><input id="lookupCode" placeholder="Kode pada nota servis" required><div class="actions"><button type="submit">Cek status</button></div></form><div class="notice">Untuk menjaga privasi, pelanggan memerlukan nomor servis dan kode akses. Jangan bagikan kode akses ke orang lain.</div><div id="lookupMsg" class="msg"></div></div><div class="card s7" id="result"><div class="muted">Hasil pencarian status akan tampil di sini.</div></div></div></section>
 <section id="adminView" class="hidden"><div class="card" id="loginCard" style="max-width:480px;margin:auto"><h2>Login admin</h2><p class="muted">Selamat datang, silahkan input akun admin.</p><form id="loginForm"><label>Email admin</label><input id="email" type="email" autocomplete="username" required><label>Password</label><input id="pass" type="password" autocomplete="current-password" required><div class="actions"><button type="submit">Masuk</button></div></form><div id="loginMsg" class="msg"></div></div>
 <div id="dashboard" class="hidden"><div class="row" style="display:flex;align-items:center;justify-content:space-between"><div><h2>Dashboard admin</h2><p class="muted">Data disimpan online di database.</p></div><button class="secondary" onclick="logout()">Keluar</button></div><div class="stats"><div class="stat"><span>Total order</span><strong id="total">0</strong></div><div class="stat"><span>Proses</span><strong id="progress">0</strong></div><div class="stat"><span>Menunggu</span><strong id="waiting">0</strong></div><div class="stat"><span>Selesai</span><strong id="done">0</strong></div></div><div class="grid"><div class="card s5"><h3 id="ticketTitle">Tambah order</h3><form id="ticketForm"><input type="hidden" id="ticketId"><label>Jenis order *</label><select id="ticketType"><option value="servis">Servis PC / laptop</option><option value="rakitan">Rakitan PC</option></select><label>Nomor order *</label><input id="ticketNo" placeholder="SRV-2026-001" required><label>Nama pelanggan *</label><input id="customer" required><label>Unit / konfigurasi singkat *</label><input id="device" placeholder="Laptop ASUS / PC Gaming Ryzen 5" required><div id="assemblyFields" class="hidden"><label>Nama paket rakitan *</label><input id="packageName" placeholder="Paket Gaming Ryzen 5"><label>Daftar komponen (satu komponen per baris) *</label><textarea id="components" placeholder="Processor: ...&#10;Motherboard: ...&#10;RAM: ...&#10;SSD: ...&#10;VGA: ...&#10;PSU: ...&#10;Casing: ..."></textarea></div><label>Teknisi / perakit</label><input id="technician"><label id="problemLabel">Keluhan awal *</label><textarea id="problem" required></textarea><label>Kode akses pelanggan *</label><input id="accessCode" placeholder="Misal: 8F2K9Q (beri ke pelanggan)" minlength="4"><div class="muted">Saat membuat order baru, kode akses wajib diisi. Saat edit, kosongkan jika tidak ingin mengubah kode.</div><div class="actions"><button type="submit">Simpan order</button><button class="secondary" type="button" onclick="resetForm()">Bersihkan</button></div></form><div id="ticketMsg" class="msg"></div></div><div class="card s7"><h3>Update progres servis / rakitan</h3><form id="updateForm"><label>Pilih tiket</label><select id="updateTicket" required></select><label>Status</label><select id="status"></select><label>Catatan teknisi</label><textarea id="note" placeholder="Hasil pengecekan, komponen yang dipasang, atau tindakan yang dilakukan" required></textarea><div class="row"><div><label>Estimasi selesai</label><input id="eta" placeholder="2–3 hari kerja"></div><div><label>Estimasi biaya (Rp)</label><input id="cost" type="number" min="0" placeholder="350000"></div></div><label>Foto progres (opsional)</label><input id="photo" type="file" accept="image/jpeg,image/png,image/webp"><div class="muted">Foto maksimal 2 MB. Foto diunggah ke Storage.</div><div class="actions"><button type="submit">Simpan update</button></div></form><div id="updateMsg" class="msg"></div></div>
-<div class="card s7"><h3>Edit / revisi riwayat teknisi</h3><p class="muted">Pilih tiket dan riwayat yang salah, lalu koreksi status atau catatannya. Foto tidak diubah.</p>
+<div class="card s7"><h3>Edit / revisi riwayat teknisi</h3><p class="muted">Pilih tiket dan riwayat yang salah, lalu koreksi status, catatan, atau foto. Jika tidak memilih foto baru, foto lama akan dipertahankan.</p>
 <label>Pilih tiket</label><select id="historyTicket"></select>
 <label>Riwayat yang mau direvisi</label><select id="historyEntry"><option value="">Pilih riwayat</option></select>
 <label>Status riwayat</label><input id="historyStatus" placeholder="Contoh: Sedang dicek">
+<label>Foto riwayat saat ini</label><div id="historyPhotoCurrent" class="muted">Pilih riwayat untuk melihat foto.</div>
+<label>Upload / ganti foto (opsional)</label><input id="historyPhoto" type="file" accept="image/jpeg,image/png,image/webp">
+<div class="muted">Maksimal 2 MB. Format JPG, PNG, atau WEBP. Kosongkan jika foto lama ingin dipertahankan.</div><div id="historyPhotoPreview"></div>
 <label>Catatan teknisi</label><textarea id="historyNote" placeholder="Koreksi kata-kata catatan teknisi"></textarea>
 <div class="actions"><button type="button" onclick="saveHistoryEdit()">Simpan revisi</button><button class="secondary" type="button" onclick="loadHistoryEditor()">Muat ulang riwayat</button></div>
 <div id="historyMsg" class="msg"></div><div class="notice">Jika yang diedit adalah riwayat terbaru, status tiket pelanggan juga akan disamakan. Riwayat lama hanya mengubah entri tersebut.</div>
@@ -43,12 +46,23 @@ document.getElementById('historyEntry').addEventListener('change',()=>{
  const h=historyItems.find(x=>x.id===document.getElementById('historyEntry').value);
  document.getElementById('historyStatus').value=h?.status||'';
  document.getElementById('historyNote').value=h?.note||'';
+ document.getElementById('historyPhoto').value='';
+ document.getElementById('historyPhotoPreview').innerHTML='';
+ document.getElementById('historyPhotoCurrent').innerHTML=h?.photo_url
+  ? `<a class="photo-link" href="${esc(h.photo_url)}" target="_blank" rel="noopener noreferrer"><img class="photo" src="${esc(h.photo_url)}" alt="Foto riwayat saat ini"></a>`
+  : 'Belum ada foto pada riwayat ini.';
+});
+document.getElementById('historyPhoto').addEventListener('change',()=>{
+ const file=document.getElementById('historyPhoto').files[0],preview=document.getElementById('historyPhotoPreview');
+ if(!file){preview.innerHTML='';return}
+ if(!['image/jpeg','image/png','image/webp'].includes(file.type)){preview.textContent='Format tidak didukung. Gunakan JPG, PNG, atau WEBP.';return}
+ preview.innerHTML=`<div class="photo-caption">Pratinjau foto pengganti</div><img class="photo" src="${URL.createObjectURL(file)}" alt="Pratinjau foto baru">`;
 });
 async function loadHistoryEditor(){
  const ticketId=document.getElementById('historyTicket').value;
  const entry=document.getElementById('historyEntry');
  historyItems=[];entry.innerHTML='<option value="">Pilih riwayat</option>';
- document.getElementById('historyStatus').value='';document.getElementById('historyNote').value='';
+ document.getElementById('historyStatus').value='';document.getElementById('historyNote').value='';document.getElementById('historyPhoto').value='';document.getElementById('historyPhotoCurrent').textContent='Pilih riwayat untuk melihat foto.';document.getElementById('historyPhotoPreview').innerHTML='';
  if(!db||!session||!ticketId)return;
  const {data,error}=await db.from('service_history').select('id,ticket_id,status,note,photo_url,created_at').eq('ticket_id',ticketId).order('created_at',{ascending:false});
  if(error){msg('historyMsg','Gagal memuat riwayat: '+error.message);return}
@@ -74,7 +88,7 @@ async function saveHistoryEdit(){
    const {error:ticketError}=await db.from('service_tickets').update({status}).eq('id',h.ticket_id);
    if(ticketError)throw new Error('Riwayat sudah direvisi, tetapi status tiket gagal disamakan: '+ticketError.message);
   }
-  msg('historyMsg','Revisi berhasil disimpan.',true);
+  msg('historyMsg',file?'Revisi status, catatan, dan foto berhasil disimpan.':'Revisi status dan catatan berhasil disimpan; foto lama dipertahankan.',true);
   await loadHistoryEditor();
   await loadTickets();
  }catch(err){console.error(err);msg('historyMsg','Gagal menyimpan revisi: '+(err.message||err))}
